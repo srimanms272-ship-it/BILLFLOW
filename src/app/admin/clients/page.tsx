@@ -87,7 +87,15 @@ export default function ClientsPage() {
       setFormData(INITIAL_FORM);
       fetchClients();
     } catch (err) {
-      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to save', variant: 'error' });
+      const rawMsg = err instanceof Error ? err.message : 'Failed to save client';
+      const description =
+        rawMsg.includes('SSL alert') ||
+        rawMsg.includes('0A000438:SSL') ||
+        rawMsg.includes('alert internal error') ||
+        rawMsg.includes('SSL routines')
+          ? 'MongoDB Atlas rejected connection: Please add 0.0.0.0/0 under MongoDB Atlas -> Network Access -> IP Access List.'
+          : rawMsg;
+      toast({ title: 'Save Failed', description, variant: 'error' });
     } finally {
       setFormLoading(false);
     }

@@ -31,11 +31,11 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
   if (!cached.promise) {
     const opts = {
       maxPoolSize: 10,
-      minPoolSize: 2,
-      socketTimeoutMS: 30000,
-      connectTimeoutMS: 30000,
-      serverSelectionTimeoutMS: 15000,
-      tls: true,
+      minPoolSize: 0,
+      socketTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      serverSelectionTimeoutMS: 10000,
+      retryWrites: true,
     };
 
     cached.promise = MongoClient.connect(MONGODB_URL, opts).then((client) => {
@@ -56,6 +56,7 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
     cached.conn = await cached.promise;
   } catch (e) {
     cached.promise = null;
+    cached.conn = null;
     throw e;
   }
 

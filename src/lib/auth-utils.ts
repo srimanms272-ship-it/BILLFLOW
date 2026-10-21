@@ -266,6 +266,23 @@ export function createErrorResponse(error: unknown): Response {
     }
   }
   if (error instanceof Error) {
+    const msg = error.message;
+    if (
+      msg.includes('SSL alert number 80') ||
+      msg.includes('0A000438:SSL') ||
+      msg.includes('alert internal error') ||
+      msg.includes('MongoServerSelectionError') ||
+      msg.includes('MongoNetworkError')
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            'MongoDB Atlas rejected connection (SSL Alert 80): Please add 0.0.0.0/0 to MongoDB Atlas under Network Access -> IP Access List.',
+        },
+        { status: 503 }
+      );
+    }
     return Response.json(
       { success: false, error: error.message },
       { status: 500 }
