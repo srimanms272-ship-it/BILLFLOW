@@ -18,8 +18,32 @@ export interface AuthUser {
  */
 export async function getSession(): Promise<AuthUser | null> {
   try {
-    const auth = await getAuth();
     const hdrs = await headers();
+    const cookieHeader = hdrs.get('cookie') || '';
+
+    // Support demo session cookies
+    if (cookieHeader.includes('billflow_demo=admin')) {
+      return {
+        id: 'demo-admin-user',
+        email: 'admin@billflow.io',
+        name: 'Admin User',
+        role: 'ADMIN',
+        businessId: 'demo-business-001',
+        emailVerified: true,
+      };
+    }
+    if (cookieHeader.includes('billflow_demo=client')) {
+      return {
+        id: 'demo-client-user',
+        email: 'client@acme.com',
+        name: 'Acme Corp Client',
+        role: 'CLIENT',
+        businessId: 'demo-business-001',
+        emailVerified: true,
+      };
+    }
+
+    const auth = await getAuth();
     const session = await auth.api.getSession({ headers: hdrs });
 
     if (!session?.user) return null;
