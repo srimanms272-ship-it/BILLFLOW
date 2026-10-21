@@ -8,39 +8,69 @@ interface Params { params: Promise<{ id: string }> }
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const session = await getSession();
     const { id } = await params;
-    const db = await getDb();
+    let session: any = null;
+    try {
+      session = await getSession();
+    } catch {}
 
-    const idQuery = ObjectId.isValid(id)
-      ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
-      : { $or: [{ _id: id }, { invoiceNumber: id }] };
+    const memInvoices = (global as any)._inMemoryInvoices || [];
+    let invoice: any = memInvoices.find((i: any) => i._id === id || i.invoiceNumber === id) || null;
+    let client: any = invoice?.client || null;
+    let business: any = null;
 
-    let invoice = null;
+    try {
+      const db = await getDb();
 
-    if (!session) {
-      invoice = await db.collection('invoices').findOne(idQuery as any);
-    } else if (session.role === 'CLIENT') {
-      const clientDocs = await getClientDocsForUser(session.id, session.email);
-      const clientIds = [...clientDocs.map(c => c._id.toString()), ...clientDocs.map(c => c._id)];
-      invoice = await db.collection('invoices').findOne({
-        ...idQuery,
-        clientId: { $in: clientIds },
-      } as any);
+      const idQuery = ObjectId.isValid(id)
+        ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
+        : { $or: [{ _id: id }, { invoiceNumber: id }] };
+
       if (!invoice) {
-        invoice = await db.collection('invoices').findOne(idQuery as any);
+        if (!session) {
+          invoice = await db.collection('invoices').findOne(idQuery as any);
+        } else if (session.role === 'CLIENT') {
+          const clientDocs = await getClientDocsForUser(session.id, session.email);
+          const clientIds = [...clientDocs.map(c => c._id.toString()), ...clientDocs.map(c => c._id)];
+          invoice = await db.collection('invoices').findOne({
+            ...idQuery,
+            clientId: { $in: clientIds },
+          } as any);
+          if (!invoice) {
+            invoice = await db.collection('invoices').findOne(idQuery as any);
+          }
+        } else {
+          invoice = await db.collection('invoices').findOne({
+            ...idQuery,
+            $or: [
+              { businessId: session.businessId },
+              ...(ObjectId.isValid(session.businessId || '') ? [{ businessId: new ObjectId(session.businessId) }] : []),
+            ],
+          } as any);
+          if (!invoice) {
+            invoice = await db.collection('invoices').findOne(idQuery as any);
+          }
+        }
       }
-    } else {
-      invoice = await db.collection('invoices').findOne({
-        ...idQuery,
-        $or: [
-          { businessId: session.businessId },
-          ...(ObjectId.isValid(session.businessId || '') ? [{ businessId: new ObjectId(session.businessId) }] : []),
-        ],
-      } as any);
-      if (!invoice) {
-        invoice = await db.collection('invoices').findOne(idQuery as any);
+
+      if (invoice) {
+        const clientLookup = ObjectId.isValid(invoice.clientId)
+          ? { $or: [{ _id: new ObjectId(invoice.clientId) }, { _id: invoice.clientId }] }
+          : { _id: invoice.clientId };
+
+        const businessLookup = ObjectId.isValid(invoice.businessId)
+          ? { $or: [{ _id: new ObjectId(invoice.businessId) }, { _id: invoice.businessId }] }
+          : { _id: invoice.businessId };
+
+        const [foundClient, foundBiz] = await Promise.all([
+          db.collection('clients').findOne(clientLookup as any).catch(() => null),
+          db.collection('businesses').findOne(businessLookup as any).catch(() => null),
+        ]);
+        if (foundClient) client = foundClient;
+        if (foundBiz) business = foundBiz;
       }
+    } catch (dbErr) {
+      console.warn('[Invoice PDF] Database unavailable, rendering using available/fallback invoice data:', dbErr);
     }
 
     // Demo/Mock Fallback if not found in DB
@@ -80,12 +110,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       };
     }
 
-    // Lookup client details
-    const clientLookup = ObjectId.isValid(invoice.clientId)
-      ? { $or: [{ _id: new ObjectId(invoice.clientId) }, { _id: invoice.clientId }] }
-      : { _id: invoice.clientId };
-
-    let client: any = await db.collection('clients').findOne(clientLookup as any);
     if (!client) {
       client = {
         _id: invoice.clientId,
@@ -104,15 +128,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       };
     }
 
-    // Lookup business details
-    const businessLookup = ObjectId.isValid(invoice.businessId)
-      ? { $or: [{ _id: new ObjectId(invoice.businessId) }, { _id: invoice.businessId }] }
-      : { _id: invoice.businessId };
-
-    let business: any = await db.collection('businesses').findOne(businessLookup as any);
-    if (!business) {
-      business = await db.collection('businesses').findOne({});
-    }
     if (!business) {
       business = {
         _id: invoice.businessId,
