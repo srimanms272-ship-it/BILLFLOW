@@ -170,8 +170,7 @@ export async function getClientDocsForUser(
 
     return clientDocs;
   } catch (err: any) {
-    const memClients = (global as any)._inMemoryClients || [];
-    return memClients.filter((c: any) => c.userId === userId || (email && c.email === email));
+    return [];
   }
 }
 

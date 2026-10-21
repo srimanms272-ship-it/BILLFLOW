@@ -9,15 +9,6 @@ import { ObjectId } from 'mongodb';
 import { randomBytes } from 'crypto';
 import { format } from 'date-fns';
 
-// Global in-memory fallback store for invoices (persists across requests during DB downtime)
-declare global {
-  // eslint-disable-next-line no-var
-  var _inMemoryInvoices: any[] | undefined;
-}
-if (!global._inMemoryInvoices) {
-  global._inMemoryInvoices = [];
-}
-
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession();
@@ -46,7 +37,6 @@ export async function GET(request: NextRequest) {
       }
       const clientStringIds = clientDocs.map(c => c._id.toString());
       const clientObjIds = clientDocs.map(c => c._id);
-      // Support matching string or ObjectId clientId in invoice records
       filter.clientId = { $in: [...clientStringIds, ...clientObjIds] };
     } else {
       const bId = user.businessId || '';
@@ -93,11 +83,11 @@ export async function GET(request: NextRequest) {
         .toArray();
       if (allInvoices.length > 0) {
         invoices = allInvoices;
-        total = allInvoices.length;
+        total = await db.collection('invoices').countDocuments({});
       }
     }
 
-    // Enrich with client names
+    // Enrich with client names directly from MongoDB Atlas
     const clientIds = [...new Set(invoices.map((i) => i.clientId).filter(Boolean))];
     const clientLookupFilter: Record<string, unknown> = {
       $or: [
@@ -112,76 +102,21 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     const clientMap = new Map(clients.map((c) => [c._id.toString(), c]));
-    const memClients = (global as any)._inMemoryClients || [];
-    memClients.forEach((c: any) => clientMap.set(c._id.toString(), c));
 
     const enriched = invoices.map((inv) => ({
       ...inv,
       client: clientMap.get(inv.clientId?.toString?.() || inv.clientId) || inv.client,
     }));
 
-    const memInvoices = global._inMemoryInvoices || [];
-    const existingInvIds = new Set(enriched.map((i) => i._id.toString()));
-    const additionalInvs = memInvoices.filter((i) => !existingInvIds.has(i._id.toString()));
-    const mergedInvoices = [...additionalInvs, ...enriched];
-
     return createSuccessResponse({
-      invoices: mergedInvoices,
-      total: total + additionalInvs.length,
+      invoices: enriched,
+      total,
       page: pagination.page,
       limit: pagination.limit,
-      totalPages: Math.max(1, Math.ceil((total + additionalInvs.length) / pagination.limit)),
+      totalPages: Math.max(1, Math.ceil(total / pagination.limit)),
     });
   } catch (err) {
-    const memInvoices = global._inMemoryInvoices || [];
-    const defaultDemo = [
-        {
-          _id: 'inv_demo_1',
-          invoiceNumber: 'INV-2026-001',
-          total: 150000,
-          amountPaid: 150000,
-          amountDue: 0,
-          status: 'PAID',
-          invoiceDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 86400000 * 15).toISOString(),
-          createdAt: new Date().toISOString(),
-          client: { name: 'Acme Corporation', email: 'billing@acme.com', company: 'Acme Corp' },
-        },
-        {
-          _id: 'inv_demo_2',
-          invoiceNumber: 'INV-2026-002',
-          total: 280000,
-          amountPaid: 140000,
-          amountDue: 140000,
-          status: 'PARTIALLY_PAID',
-          invoiceDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 86400000 * 10).toISOString(),
-          createdAt: new Date().toISOString(),
-          client: { name: 'Global Tech Ltd', email: 'finance@globaltech.com', company: 'Global Tech' },
-        },
-        {
-          _id: 'inv_demo_3',
-          invoiceNumber: 'INV-2026-003',
-          total: 95000,
-          amountPaid: 0,
-          amountDue: 95000,
-          status: 'SENT',
-          invoiceDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 86400000 * 5).toISOString(),
-          createdAt: new Date().toISOString(),
-          client: { name: 'Nexus Solutions', email: 'accounts@nexus.io', company: 'Nexus Inc' },
-        },
-      ];
-
-    const combined = [...memInvoices, ...defaultDemo];
-
-    return createSuccessResponse({
-      invoices: combined,
-      total: combined.length,
-      page: 1,
-      limit: 20,
-      totalPages: 1,
-    });
+    return createErrorResponse(err);
   }
 }
 
@@ -220,19 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!client) {
-      const memClients = (global as any)._inMemoryClients || [];
-      client = memClients.find(
-        (c: any) => c._id === data.clientId || c.email === data.clientId || c.name === data.clientId
-      );
-    }
-
-    if (!client) {
-      client = {
-        _id: data.clientId,
-        name: 'Valued Client',
-        email: 'client@example.com',
-        company: 'Client Enterprise',
-      };
+      throw new ApiError('Client not found. Please select a valid client from MongoDB Atlas.', 404);
     }
 
     // Get business settings for invoice numbering safely
@@ -255,9 +178,8 @@ export async function POST(request: NextRequest) {
       invoiceNumber = `${prefix}-${Date.now().toString().slice(-6)}`;
     }
 
-    // CRITICAL: Calculate totals server-side, never trust client
+    // Calculate totals server-side
     const totals = calculateInvoiceTotals(data.items);
-
     const publicToken = randomBytes(32).toString('hex');
     const now = new Date();
 
@@ -292,7 +214,7 @@ export async function POST(request: NextRequest) {
     const result = await db.collection('invoices').insertOne(invoice);
     const invoiceId = result.insertedId.toString();
 
-    // Update client totals
+    // Update client totals in MongoDB Atlas
     try {
       await db.collection('clients').updateOne(
         { _id: client._id },
@@ -380,52 +302,11 @@ export async function POST(request: NextRequest) {
           emailSent: false,
           emailError: emailErrorMessage || 'Email could not be sent. Check email configuration in .env.local.',
         },
-        'Invoice created, but email could not be sent.',
+        'Invoice created successfully',
         201
       );
     }
   } catch (err: any) {
-    if (err?.statusCode === 400 || (err && 'issues' in err)) {
-      return createErrorResponse(err);
-    }
-    console.warn('[Invoices API] Database error, saving invoice to resilient memory cache:', err?.message);
-    try {
-      const body = await request.clone().json().catch(() => ({}));
-      const fallbackId = new ObjectId().toString();
-      const defaultInvoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-      const totals = calculateInvoiceTotals(body.items || []);
-      const fallbackInvoice = {
-        _id: fallbackId,
-        businessId: '6ad7ae55863a77ee7c921a7f',
-        clientId: body.clientId || 'default_client',
-        invoiceNumber: defaultInvoiceNumber,
-        status: 'DRAFT',
-        invoiceDate: new Date().toISOString(),
-        dueDate: new Date(Date.now() + 15 * 86400000).toISOString(),
-        currency: body.currency || 'INR',
-        items: totals.items,
-        subtotal: totals.subtotal,
-        discountAmount: totals.discountAmount,
-        taxableAmount: totals.taxableAmount,
-        cgstAmount: totals.cgstAmount,
-        sgstAmount: totals.sgstAmount,
-        igstAmount: totals.igstAmount,
-        totalTax: totals.totalTax,
-        total: totals.total,
-        amountPaid: 0,
-        amountDue: totals.total,
-        notes: body.notes || '',
-        termsAndConditions: body.termsAndConditions || '',
-        publicToken: randomBytes(32).toString('hex'),
-        isRecurring: false,
-        createdBy: 'admin',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      global._inMemoryInvoices!.unshift(fallbackInvoice);
-      return createSuccessResponse(fallbackInvoice, 'Invoice created successfully', 201);
-    } catch {
-      return createErrorResponse(err);
-    }
+    return createErrorResponse(err);
   }
 }

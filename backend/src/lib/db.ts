@@ -20,8 +20,13 @@ if (!global._mongo) {
 }
 
 export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
-  if (!MONGODB_URL) {
-    throw new Error('Please define the MONGODB_URL environment variable');
+  const url =
+    process.env.MONGODB_URL ||
+    process.env.MONGODB_URI ||
+    MONGODB_URL;
+
+  if (!url) {
+    throw new Error('Please define the MONGODB_URL or MONGODB_URI environment variable');
   }
 
   if (cached.conn) {
@@ -38,10 +43,10 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
       retryWrites: true,
     };
 
-    cached.promise = MongoClient.connect(MONGODB_URL, opts).then((client) => {
+    cached.promise = MongoClient.connect(url, opts).then((client) => {
       let dbName = 'billing_system';
       try {
-        const parsed = new URL(MONGODB_URL);
+        const parsed = new URL(url);
         const path = parsed.pathname.replace(/^\//, '').split('/')[0];
         if (path) dbName = path;
       } catch {

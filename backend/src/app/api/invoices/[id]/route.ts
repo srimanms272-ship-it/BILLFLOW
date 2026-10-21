@@ -7,8 +7,6 @@ import {
 import { InvoiceSchema } from '@/lib/validations';
 import { calculateInvoiceTotals } from '@/lib/calculations';
 import { ObjectId } from 'mongodb';
-import { sendInvoiceEmail } from '@/lib/email';
-import { formatCurrency } from '@/lib/calculations';
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -30,57 +28,54 @@ async function getInvoiceWithAuth(id: string, businessId: string) {
     invoice = await db.collection('invoices').findOne(idQuery as any);
   }
 
-  if (!invoice) throw new ApiError('Invoice not found', 404);
+  if (!invoice) throw new ApiError('Invoice not found in MongoDB Atlas', 404);
   return { db, invoice, objectId: invoice._id };
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const { id } = await params;
-  let session: any = null;
   try {
-    session = await getSession();
-  } catch {}
+    const { id } = await params;
+    let session: any = null;
+    try {
+      session = await getSession();
+    } catch {}
 
-  const memInvoices = (global as any)._inMemoryInvoices || [];
-  let invoice: any = memInvoices.find((i: any) => i._id === id || i.invoiceNumber === id);
-
-  try {
     const db = await getDb();
 
     const idQuery = ObjectId.isValid(id)
       ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
       : { $or: [{ _id: id }, { invoiceNumber: id }] };
 
-    if (!invoice) {
-      if (!session) {
+    let invoice: any = null;
+
+    if (!session) {
+      invoice = await db.collection('invoices').findOne(idQuery as any);
+    } else if (session.role === 'CLIENT') {
+      const clientDocs = await getClientDocsForUser(session.id, session.email);
+      const clientIds = [...clientDocs.map(c => c._id.toString()), ...clientDocs.map(c => c._id)];
+      invoice = await db.collection('invoices').findOne({
+        ...idQuery,
+        clientId: { $in: clientIds },
+      } as any);
+      if (!invoice) {
         invoice = await db.collection('invoices').findOne(idQuery as any);
-      } else if (session.role === 'CLIENT') {
-        const clientDocs = await getClientDocsForUser(session.id, session.email);
-        const clientIds = [...clientDocs.map(c => c._id.toString()), ...clientDocs.map(c => c._id)];
-        invoice = await db.collection('invoices').findOne({
-          ...idQuery,
-          clientId: { $in: clientIds },
-        } as any);
-        if (!invoice) {
-          invoice = await db.collection('invoices').findOne(idQuery as any);
-        }
-      } else {
-        invoice = await db.collection('invoices').findOne({
-          ...idQuery,
-          $or: [
-            { businessId: session.businessId },
-            ...(ObjectId.isValid(session.businessId || '') ? [{ businessId: new ObjectId(session.businessId) }] : []),
-          ],
-        } as any);
-        if (!invoice) {
-          invoice = await db.collection('invoices').findOne(idQuery as any);
-        }
+      }
+    } else {
+      invoice = await db.collection('invoices').findOne({
+        ...idQuery,
+        $or: [
+          { businessId: session.businessId },
+          ...(ObjectId.isValid(session.businessId || '') ? [{ businessId: new ObjectId(session.businessId) }] : []),
+        ],
+      } as any);
+      if (!invoice) {
+        invoice = await db.collection('invoices').findOne(idQuery as any);
       }
     }
 
     if (!invoice) throw new ApiError('Invoice not found', 404);
 
-    // Get related data safely
+    // Get related client, payments, and business safely from MongoDB Atlas
     const clientLookup = ObjectId.isValid(invoice.clientId)
       ? { $or: [{ _id: new ObjectId(invoice.clientId) }, { _id: invoice.clientId }] }
       : { _id: invoice.clientId };
@@ -108,19 +103,11 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return createSuccessResponse({
       invoice,
-      client: client || invoice.client || { name: 'Client', email: 'client@example.com' },
+      client: client || invoice.client || null,
       payments: payments || [],
-      business: business || { name: 'Apex Infotech Solutions', email: 'billing@billflow.io' },
+      business: business || null,
     });
   } catch (err: any) {
-    if (invoice) {
-      return createSuccessResponse({
-        invoice,
-        client: invoice.client || { name: 'Client', email: 'client@example.com' },
-        payments: [],
-        business: { name: 'Apex Infotech Solutions', email: 'billing@billflow.io' },
-      });
-    }
     return createErrorResponse(err);
   }
 }
@@ -158,7 +145,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         amountDue: totals.total - invoice.amountPaid,
       };
 
-      // Update client total invoiced
+      // Update client total invoiced in MongoDB Atlas
       const diff = totals.total - invoice.total;
       if (diff !== 0) {
         await db.collection('clients').updateOne(
