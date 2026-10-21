@@ -89,6 +89,22 @@ async function createPaymentOrder(_request: NextRequest, session: { id: string; 
   let orderId = `order_${Date.now()}`;
   let currency = invoice.currency || 'INR';
 
+  const isPlaceholder =
+    !process.env.RAZORPAY_KEY_ID ||
+    process.env.RAZORPAY_KEY_ID.includes('your_key_id') ||
+    !process.env.RAZORPAY_KEY_SECRET ||
+    process.env.RAZORPAY_KEY_SECRET.includes('your_razorpay_secret');
+
+  if (isPlaceholder) {
+    return createSuccessResponse({
+      orderId: `order_sandbox_${Date.now()}`,
+      amount: requestedAmountPaise,
+      currency,
+      keyId: 'rzp_test_sandbox',
+      isSandbox: true,
+    });
+  }
+
   try {
     const razorpay = getRazorpay();
     const order = await razorpay.orders.create({

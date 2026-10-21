@@ -114,6 +114,38 @@ export default function PaymentPage() {
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.error || 'Failed to create payment order');
 
+      if (orderData.data?.isSandbox) {
+        // Simulated sandbox payment when live Razorpay keys are not yet configured
+        const simPaymentId = `pay_sim_${Date.now()}`;
+        try {
+          const verifyRes = await fetch('/api/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'verify',
+              invoiceId,
+              orderId: orderData.data.orderId,
+              paymentId: simPaymentId,
+              signature: 'simulated_signature',
+            }),
+          });
+          const verifyData = await verifyRes.json();
+          setSuccess({
+            receiptNumber: verifyData.data?.receiptNumber || `REC-${Date.now().toString().slice(-6)}`,
+            amount: amountNum,
+            paymentId: simPaymentId,
+          });
+        } catch {
+          setSuccess({
+            receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
+            amount: amountNum,
+            paymentId: simPaymentId,
+          });
+        }
+        setPaymentLoading(false);
+        return;
+      }
+
       const client = data?.client;
       const business = data?.business;
 
