@@ -24,7 +24,7 @@ function getCookieValue(cookieHeader: string | null, name: string): string | nul
 function createDemoAuthResponse(role: 'admin' | 'client', email: string) {
   const isAdmin = role === 'admin';
   const roleUpper = isAdmin ? 'ADMIN' : 'CLIENT';
-  const name = isAdmin ? 'Admin User' : 'Acme Corp Client';
+  const name = isAdmin ? 'Apex Infotech Admin' : 'Acme Corp Client';
   const token = `billflow_demo_token_${role}`;
 
   const res = new Response(
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   const demoRole = getCookieValue(cookieHeader, 'billflow_demo');
 
   // Handle demo session directly if demo cookie exists
-  if (url.pathname.endsWith('/get-session') && demoRole) {
+  if (url.pathname.includes('get-session') && demoRole) {
     const isAdmin = demoRole === 'admin';
     return new Response(
       JSON.stringify({
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
         },
         user: {
           id: `demo-${demoRole}-user`,
-          name: isAdmin ? 'Admin User' : 'Acme Corp Client',
+          name: isAdmin ? 'Apex Infotech Admin' : 'Acme Corp Client',
           email: isAdmin ? 'admin@billflow.io' : 'client@acme.com',
           role: isAdmin ? 'ADMIN' : 'CLIENT',
           emailVerified: true,
@@ -93,36 +93,9 @@ export async function GET(request: Request) {
     await ensureDbInit();
     const auth = await getAuth();
     const handler = toNextJsHandler(auth);
-    const res = await handler.GET(request);
-
-    if (res.status >= 500 && url.pathname.endsWith('/get-session') && demoRole) {
-      const isAdmin = demoRole === 'admin';
-      return new Response(
-        JSON.stringify({
-          session: {
-            id: `demo-${demoRole}-session`,
-            userId: `demo-${demoRole}-user`,
-            token: `billflow_demo_token_${demoRole}`,
-            expiresAt: '2030-01-01T00:00:00.000Z',
-          },
-          user: {
-            id: `demo-${demoRole}-user`,
-            name: isAdmin ? 'Admin User' : 'Acme Corp Client',
-            email: isAdmin ? 'admin@billflow.io' : 'client@acme.com',
-            role: isAdmin ? 'ADMIN' : 'CLIENT',
-            emailVerified: true,
-          },
-        }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    return res;
+    return await handler.GET(request);
   } catch (err: any) {
-    if (url.pathname.endsWith('/get-session') && demoRole) {
+    if (url.pathname.includes('get-session') && demoRole) {
       const isAdmin = demoRole === 'admin';
       return new Response(
         JSON.stringify({
@@ -134,7 +107,7 @@ export async function GET(request: Request) {
           },
           user: {
             id: `demo-${demoRole}-user`,
-            name: isAdmin ? 'Admin User' : 'Acme Corp Client',
+            name: isAdmin ? 'Apex Infotech Admin' : 'Acme Corp Client',
             email: isAdmin ? 'admin@billflow.io' : 'client@acme.com',
             role: isAdmin ? 'ADMIN' : 'CLIENT',
             emailVerified: true,
@@ -158,7 +131,7 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
 
   // If sign out requested
-  if (url.pathname.endsWith('/sign-out')) {
+  if (url.pathname.includes('sign-out')) {
     const res = new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -174,44 +147,41 @@ export async function POST(request: Request) {
     return res;
   }
 
-  // Clone request to check demo credentials if sign-in
+  // Read request body safely
+  let text = '';
   let bodyJson: any = null;
-  if (url.pathname.endsWith('/sign-in/email')) {
-    try {
-      const cloned = request.clone();
-      bodyJson = await cloned.json();
-    } catch {
-      // ignore
+  try {
+    text = await request.text();
+    if (text) {
+      bodyJson = JSON.parse(text);
     }
+  } catch {
+    // ignore
   }
+
+  // Instant demo login bypass: if demo credentials, return immediately
+  if (bodyJson?.email) {
+    const email = String(bodyJson.email).toLowerCase().trim();
+    const isDemoAdmin = email === 'admin@billflow.io' && bodyJson.password === 'Password123!';
+    const isDemoClient = email === 'client@acme.com' && bodyJson.password === 'Password123!';
+
+    if (isDemoAdmin) return createDemoAuthResponse('admin', email);
+    if (isDemoClient) return createDemoAuthResponse('client', email);
+  }
+
+  // Otherwise, construct new request with original body for Better Auth
+  const newRequest = new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: text || undefined,
+  });
 
   try {
     await ensureDbInit();
     const auth = await getAuth();
     const handler = toNextJsHandler(auth);
-    const res = await handler.POST(request);
-
-    // If real auth returned error/500 but it is a demo account, fallback to demo session
-    if (res.status >= 500 && bodyJson?.email) {
-      const email = String(bodyJson.email).toLowerCase().trim();
-      const isDemoAdmin = email === 'admin@billflow.io' && bodyJson.password === 'Password123!';
-      const isDemoClient = email === 'client@acme.com' && bodyJson.password === 'Password123!';
-
-      if (isDemoAdmin) return createDemoAuthResponse('admin', email);
-      if (isDemoClient) return createDemoAuthResponse('client', email);
-    }
-
-    return res;
+    return await handler.POST(newRequest);
   } catch (err: any) {
-    if (bodyJson?.email) {
-      const email = String(bodyJson.email).toLowerCase().trim();
-      const isDemoAdmin = email === 'admin@billflow.io' && bodyJson.password === 'Password123!';
-      const isDemoClient = email === 'client@acme.com' && bodyJson.password === 'Password123!';
-
-      if (isDemoAdmin) return createDemoAuthResponse('admin', email);
-      if (isDemoClient) return createDemoAuthResponse('client', email);
-    }
-
     console.error('Better Auth POST error:', err);
     return new Response(JSON.stringify({ error: err.message || 'Internal Auth Error' }), {
       status: 500,
