@@ -16,15 +16,31 @@ async function ensureDbInit() {
 }
 
 export async function GET(request: Request) {
-  await ensureDbInit();
-  const auth = await getAuth();
-  const handler = toNextJsHandler(auth);
-  return handler.GET(request);
+  try {
+    await ensureDbInit();
+    const auth = await getAuth();
+    const handler = toNextJsHandler(auth);
+    return await handler.GET(request);
+  } catch (err: any) {
+    console.error('Better Auth GET error:', err);
+    return new Response(JSON.stringify({ error: err.message || 'Internal Auth Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 export async function POST(request: Request) {
-  await ensureDbInit();
-  const auth = await getAuth();
-  const handler = toNextJsHandler(auth);
-  return handler.POST(request);
+  try {
+    await ensureDbInit();
+    const auth = await getAuth();
+    const handler = toNextJsHandler(auth);
+    return await handler.POST(request);
+  } catch (err: any) {
+    console.error('Better Auth POST error:', err);
+    return new Response(JSON.stringify({ error: err.message || 'Internal Auth Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }

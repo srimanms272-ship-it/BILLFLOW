@@ -1,17 +1,17 @@
 import type { NextConfig } from "next";
 
-const backendUrl = (process.env.BACKEND_API_URL || 'https://billflow-backend-ntt5.onrender.com').replace(/\/+$/, '');
-
 const nextConfig: NextConfig = {
   async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: '/api/:path*',
-          destination: `${backendUrl}/api/:path*`,
-        },
-      ],
-    };
+    const backendUrl = process.env.BACKEND_API_URL;
+    if (!backendUrl) {
+      return [];
+    }
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl.replace(/\/+$/, '')}/api/:path*`,
+      },
+    ];
   },
 };
 

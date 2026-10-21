@@ -34,7 +34,12 @@ export default function LoginPage() {
       });
 
       if (result.error) {
-        setErrors({ general: 'Invalid email or password. Please check your credentials.' });
+        const errorMsg =
+          result.error.message ||
+          (result.error.status === 401
+            ? 'Invalid email or password. Please check your credentials.'
+            : 'Authentication failed. Please try again.');
+        setErrors({ general: errorMsg });
         setLoading(false);
         return;
       }

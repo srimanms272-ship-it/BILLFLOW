@@ -1,6 +1,8 @@
 import { MongoClient, Db } from 'mongodb';
 
-const MONGODB_URL = process.env.MONGODB_URL || '';
+const MONGODB_URL =
+  process.env.MONGODB_URL ||
+  'mongodb+srv://srimanms272_db_user:deFqz5OwbP2cUnnQ@cluster0.llhe8pa.mongodb.net/billing_system?retryWrites=true&w=majority';
 
 interface GlobalMongo {
   conn: { client: MongoClient; db: Db } | null;

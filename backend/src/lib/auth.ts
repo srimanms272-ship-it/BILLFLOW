@@ -12,8 +12,22 @@ export async function getAuth(): Promise<ReturnType<typeof betterAuth>> {
 
   authInstance = betterAuth({
     database: mongodbAdapter(db),
-    secret: process.env.BETTER_AUTH_SECRET!,
-    baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    secret:
+      process.env.BETTER_AUTH_SECRET ||
+      'your-super-secret-key-change-this-in-production-minimum-32-chars',
+    baseURL:
+      process.env.BETTER_AUTH_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      'https://billflow-backend-ntt5.onrender.com',
+    trustedOrigins: [
+      'https://billflow-murex-phi.vercel.app',
+      'https://billflow-git-frontend-backend-split-xx6148026-4193s-projects.vercel.app',
+      'https://billflow.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5000',
+      process.env.NEXT_PUBLIC_APP_URL || '',
+      process.env.APP_URL || '',
+    ].filter(Boolean),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
@@ -41,6 +55,10 @@ export async function getAuth(): Promise<ReturnType<typeof betterAuth>> {
     advanced: {
       cookiePrefix: 'billflow',
       useSecureCookies: process.env.NODE_ENV === 'production',
+      defaultCookieAttributes: {
+        sameSite: 'none',
+        secure: true,
+      },
     },
     user: {
       additionalFields: {
