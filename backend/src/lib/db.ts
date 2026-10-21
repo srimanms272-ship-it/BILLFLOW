@@ -35,6 +35,7 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
       socketTimeoutMS: 30000,
       connectTimeoutMS: 30000,
       serverSelectionTimeoutMS: 15000,
+      tls: true,
     };
 
     cached.promise = MongoClient.connect(MONGODB_URL, opts).then((client) => {
