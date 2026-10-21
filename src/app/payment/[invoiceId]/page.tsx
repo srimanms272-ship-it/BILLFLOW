@@ -275,7 +275,9 @@ export default function PaymentPage() {
   const total = (invoice?.total as number) || 0;
   const amountPaid = (invoice?.amountPaid as number) || 0;
 
-  if (invoice?.status === 'PAID' || amountDue === 0) {
+  const isPaid = (invoice?.status === 'PAID' && amountDue <= 0) || (total > 0 && amountDue <= 0 && amountPaid >= total);
+
+  if (isPaid) {
     return (
       <div className="min-h-screen bg-[#0a0e1a] flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">

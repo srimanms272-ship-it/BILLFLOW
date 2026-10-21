@@ -11,6 +11,18 @@ export function generateInvoiceHTML(
   const address = (business?.address as Record<string, string>) || {};
   const billingAddress = (client?.billingAddress as Record<string, string>) || {};
 
+  const total = Number(invoice.total || 0);
+  const amountPaid = Number(invoice.amountPaid || 0);
+  const amountDue = Number(invoice.amountDue ?? (total - amountPaid));
+  const rawStatus = String(invoice.status || 'PENDING');
+  const isPaid = (rawStatus === 'PAID' || amountDue <= 0) && amountPaid >= total && total > 0;
+  const effectiveStatus = isPaid
+    ? 'PAID'
+    : (amountDue > 0 && rawStatus === 'PAID')
+    ? 'UNPAID'
+    : rawStatus;
+  const statusBadgeLabel = effectiveStatus === 'PENDING' ? 'UNPAID' : effectiveStatus.replace('_', ' ');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,6 +39,9 @@ export function generateInvoiceHTML(
     .invoice-number { font-size: 28px; font-weight: 800; color: #1e293b; }
     .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
     .status-paid { background: #dcfce7; color: #166534; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-unpaid { background: #fef3c7; color: #92400e; }
+    .status-partially_paid { background: #e0e7ff; color: #3730a3; }
     .status-overdue { background: #fee2e2; color: #991b1b; }
     .status-sent { background: #dbeafe; color: #1e40af; }
     .status-draft { background: #f1f5f9; color: #475569; }
@@ -68,7 +83,7 @@ export function generateInvoiceHTML(
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:4px;">INVOICE</div>
         <div class="invoice-number">#${invoice.invoiceNumber}</div>
         <div style="margin-top:8px;">
-          <span class="status-badge status-${(invoice.status as string || 'draft').toLowerCase()}">${invoice.status || 'DRAFT'}</span>
+          <span class="status-badge status-${effectiveStatus.toLowerCase()}">${statusBadgeLabel}</span>
         </div>
       </div>
     </div>

@@ -151,10 +151,22 @@ export async function GET(request: NextRequest) {
         revenue: m.revenue,
         count: m.count,
       })),
-      recentInvoices: recentInvoices.map(inv => ({
-        ...inv,
-        client: clientMap.get(inv.clientId),
-      })),
+      recentInvoices: recentInvoices.map(inv => {
+        const total = Number(inv.total || 0);
+        const amountPaid = Number(inv.amountPaid || 0);
+        const amountDue = Number(inv.amountDue ?? (total - amountPaid));
+        const isPaid = (inv.status === 'PAID' || amountDue <= 0) && amountPaid >= total && total > 0;
+        const normalizedStatus = isPaid
+          ? 'PAID'
+          : (amountDue > 0 && inv.status === 'PAID')
+          ? (amountPaid > 0 ? 'PARTIALLY_PAID' : 'PENDING')
+          : (inv.status || 'PENDING');
+        return {
+          ...inv,
+          status: normalizedStatus,
+          client: clientMap.get(inv.clientId),
+        };
+      }),
       overdueInvoices: overdueInvoices.map(inv => ({
         ...inv,
         client: clientMap.get(inv.clientId),
@@ -165,81 +177,6 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (err) {
-    console.warn('Dashboard DB query error, using fallback demo metrics:', err);
-    return createSuccessResponse({
-      summary: {
-        totalInvoiced: 8500000,
-        totalPaid: 6200000,
-        totalOutstanding: 2300000,
-        totalOverdue: 500000,
-        totalExpenses: 1800000,
-        profit: 4400000,
-        clientCount: 12,
-        invoiceCount: 28,
-        paymentCount: 22,
-      },
-      invoicesByStatus: [
-        { _id: 'PAID', count: 18, total: 6200000 },
-        { _id: 'SENT', count: 6, total: 1800000 },
-        { _id: 'OVERDUE', count: 2, total: 500000 },
-        { _id: 'DRAFT', count: 2, total: 400000 },
-      ],
-      monthlyRevenue: [
-        { month: '2026-05', revenue: 750000, count: 3 },
-        { month: '2026-06', revenue: 920000, count: 4 },
-        { month: '2026-07', revenue: 1100000, count: 5 },
-        { month: '2026-08', revenue: 1350000, count: 6 },
-        { month: '2026-09', revenue: 1500000, count: 7 },
-        { month: '2026-10', revenue: 1680000, count: 8 },
-      ],
-      recentInvoices: [
-        {
-          _id: 'inv_demo_1',
-          invoiceNumber: 'INV-2026-001',
-          total: 150000,
-          amountPaid: 150000,
-          amountDue: 0,
-          status: 'PAID',
-          createdAt: new Date().toISOString(),
-          client: { name: 'Acme Corporation', email: 'billing@acme.com' },
-        },
-        {
-          _id: 'inv_demo_2',
-          invoiceNumber: 'INV-2026-002',
-          total: 280000,
-          amountPaid: 140000,
-          amountDue: 140000,
-          status: 'PARTIALLY_PAID',
-          createdAt: new Date().toISOString(),
-          client: { name: 'Global Tech Ltd', email: 'finance@globaltech.com' },
-        },
-        {
-          _id: 'inv_demo_3',
-          invoiceNumber: 'INV-2026-003',
-          total: 95000,
-          amountPaid: 0,
-          amountDue: 95000,
-          status: 'SENT',
-          createdAt: new Date().toISOString(),
-          client: { name: 'Nexus Solutions', email: 'accounts@nexus.io' },
-        },
-      ],
-      overdueInvoices: [
-        {
-          _id: 'inv_demo_4',
-          invoiceNumber: 'INV-2026-004',
-          total: 320000,
-          amountDue: 320000,
-          status: 'OVERDUE',
-          dueDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-          client: { name: 'Starlight Media', email: 'billing@starlight.com' },
-        },
-      ],
-      topClients: [
-        { name: 'Acme Corporation', company: 'Acme Corp', revenue: 2400000 },
-        { name: 'Global Tech Ltd', company: 'Global Tech', revenue: 1800000 },
-        { name: 'Nexus Solutions', company: 'Nexus', revenue: 1200000 },
-      ],
-    });
+    return createErrorResponse(err);
   }
 }

@@ -9,6 +9,24 @@ import { ObjectId } from 'mongodb';
 import { randomBytes } from 'crypto';
 import { format } from 'date-fns';
 
+export function normalizeInvoiceStatus(invoice: any): any {
+  if (!invoice) return invoice;
+  // An invoice is ONLY 'PAID' if full amount is verified paid and balance due is 0
+  const isPaid = (invoice.amountPaid >= invoice.total && invoice.total > 0) || (invoice.amountDue <= 0 && invoice.amountPaid > 0);
+  if (isPaid) {
+    return { ...invoice, status: 'PAID' };
+  }
+  // If invoice has balance due > 0, it can NEVER be 'PAID'
+  if (invoice.status === 'PAID') {
+    return { ...invoice, status: invoice.amountPaid > 0 ? 'PARTIALLY_PAID' : 'PENDING' };
+  }
+  // Default to PENDING if undefined
+  if (!invoice.status) {
+    return { ...invoice, status: 'PENDING' };
+  }
+  return invoice;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession();
@@ -60,6 +78,32 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Status filtering with support for PENDING, UNPAID, and PAID integrity
+    if (pagination.status) {
+      if (pagination.status === 'PENDING' || pagination.status === 'UNPAID') {
+        filter.$and = [
+          ...(filter.$and as any[] || []),
+          {
+            $or: [
+              { status: 'PENDING' },
+              { status: 'UNPAID' },
+              { status: 'DRAFT', amountDue: { $gt: 0 } },
+              { status: 'SENT', amountDue: { $gt: 0 } },
+              { status: 'VIEWED', amountDue: { $gt: 0 } },
+              { amountDue: { $gt: 0 }, amountPaid: 0 }
+            ]
+          }
+        ];
+      } else if (pagination.status === 'PAID') {
+        filter.$and = [
+          ...(filter.$and as any[] || []),
+          { status: 'PAID', amountDue: { $lte: 0 } }
+        ];
+      } else {
+        filter.status = pagination.status;
+      }
+    }
+
     const sortField = pagination.sortBy || 'createdAt';
     const sortDir = pagination.sortOrder === 'asc' ? 1 : -1;
     const skip = (pagination.page - 1) * pagination.limit;
@@ -75,7 +119,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Fallback if no invoices match current business filter
-    if (invoices.length === 0 && !pagination.search && !pagination.clientId && user.role !== 'CLIENT') {
+    if (invoices.length === 0 && !pagination.search && !pagination.clientId && !pagination.status && user.role !== 'CLIENT') {
       const allInvoices = await db.collection('invoices')
         .find({})
         .sort({ createdAt: -1 })
@@ -103,10 +147,12 @@ export async function GET(request: NextRequest) {
 
     const clientMap = new Map(clients.map((c) => [c._id.toString(), c]));
 
-    const enriched = invoices.map((inv) => ({
-      ...inv,
-      client: clientMap.get(inv.clientId?.toString?.() || inv.clientId) || inv.client,
-    }));
+    const enriched = invoices.map((inv) =>
+      normalizeInvoiceStatus({
+        ...inv,
+        client: clientMap.get(inv.clientId?.toString?.() || inv.clientId) || inv.client,
+      })
+    );
 
     return createSuccessResponse({
       invoices: enriched,
@@ -183,11 +229,12 @@ export async function POST(request: NextRequest) {
     const publicToken = randomBytes(32).toString('hex');
     const now = new Date();
 
+    // Invoices ALWAYS default to 'PENDING' (Unpaid). Never automatically 'PAID'.
     const invoice = {
       businessId: user.businessId,
       clientId: client._id.toString(),
       invoiceNumber,
-      status: 'DRAFT',
+      status: 'PENDING',
       invoiceDate: new Date(data.invoiceDate),
       dueDate: new Date(data.dueDate),
       currency: data.currency || 'INR',
@@ -266,12 +313,11 @@ export async function POST(request: NextRequest) {
           }
         );
 
-        // Update status to SENT
+        // Record email dispatch timestamp, while preserving status as PENDING (Unpaid)
         await db.collection('invoices').updateOne(
           { _id: result.insertedId },
-          { $set: { status: 'SENT', sentAt: new Date(), updatedAt: new Date() } }
+          { $set: { sentAt: new Date(), updatedAt: new Date() } }
         );
-        (invoice as any).status = 'SENT';
         emailSent = true;
 
         await createAuditLog({

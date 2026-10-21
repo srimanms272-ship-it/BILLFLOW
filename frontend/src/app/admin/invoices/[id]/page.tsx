@@ -27,10 +27,11 @@ function formatDate(dateStr: string): string {
 }
 
 const STATUS_INFO: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  PENDING: { label: 'Unpaid / Pending', icon: Clock, className: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+  UNPAID: { label: 'Unpaid', icon: Clock, className: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
   DRAFT: { label: 'Draft', icon: FileText, className: 'text-slate-400 bg-slate-500/10 border-slate-500/20' },
-  SENT: { label: 'Sent', icon: Send, className: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  VIEWED: { label: 'Viewed', icon: CheckCircle, className: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  PENDING: { label: 'Pending', icon: Clock, className: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
+  SENT: { label: 'Sent (Unpaid)', icon: Send, className: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  VIEWED: { label: 'Viewed (Unpaid)', icon: CheckCircle, className: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
   PARTIALLY_PAID: { label: 'Partially Paid', icon: DollarSign, className: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
   PAID: { label: 'Paid', icon: CheckCircle, className: 'text-green-400 bg-green-500/10 border-green-500/20' },
   OVERDUE: { label: 'Overdue', icon: AlertTriangle, className: 'text-red-400 bg-red-500/10 border-red-500/20' },
@@ -137,9 +138,11 @@ export default function InvoiceDetailPage() {
 
   const { invoice, client, business, payments } = data;
   const items = (invoice.items as Record<string, unknown>[]) || [];
-  const statusInfo = STATUS_INFO[invoice.status as string] || STATUS_INFO.DRAFT;
+  const isPaid = (invoice.status === 'PAID') && ((invoice.amountDue ?? 0) <= 0);
+  const effectiveStatusKey = isPaid ? 'PAID' : (invoice.status === 'PAID' ? 'PENDING' : (invoice.status as string || 'PENDING'));
+  const statusInfo = STATUS_INFO[effectiveStatusKey] || STATUS_INFO.PENDING;
   const StatusIcon = statusInfo.icon;
-  const isOverdue = new Date(invoice.dueDate as string) < new Date() && !['PAID', 'CANCELLED'].includes(invoice.status as string);
+  const isOverdue = new Date(invoice.dueDate as string) < new Date() && !isPaid && invoice.status !== 'CANCELLED';
   const amountDue = invoice.amountDue as number;
   const amountPaid = invoice.amountPaid as number;
   const total = invoice.total as number;

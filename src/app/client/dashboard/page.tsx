@@ -74,7 +74,7 @@ export default function ClientDashboardPage() {
   const totalInvoiced = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
   const totalPaid = invoices.reduce((sum, inv) => sum + (inv.amountPaid || 0), 0);
   const totalOutstanding = invoices.reduce((sum, inv) => sum + (inv.amountDue || 0), 0);
-  const pendingInvoices = invoices.filter(inv => inv.status !== 'PAID' && inv.status !== 'CANCELLED');
+  const pendingInvoices = invoices.filter(inv => (inv.amountDue > 0) || (inv.status !== 'PAID' && inv.status !== 'CANCELLED'));
 
   return (
     <div className="space-y-8 animate-fade-in max-w-6xl">
@@ -173,7 +173,12 @@ export default function ClientDashboardPage() {
               </thead>
               <tbody>
                 {invoices.map((inv) => {
-                  const isPaid = inv.status === 'PAID';
+                  const isPaid = (inv.status === 'PAID') && (inv.amountDue <= 0);
+                  const displayStatus = isPaid
+                    ? 'PAID'
+                    : (inv.amountDue > 0 && inv.status === 'PAID')
+                    ? 'UNPAID'
+                    : (inv.status || 'PENDING');
                   return (
                     <tr key={inv._id}>
                       <td className="pl-6 font-semibold text-white">{inv.invoiceNumber}</td>
@@ -191,7 +196,7 @@ export default function ClientDashboardPage() {
                             ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                             : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                         }`}>
-                          {inv.status}
+                          {displayStatus}
                         </span>
                       </td>
                       <td className="pr-6 text-right space-x-2">

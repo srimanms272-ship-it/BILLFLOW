@@ -149,7 +149,7 @@ async function convertToInvoice(user: { id: string; businessId: string }, body: 
     businessId: user.businessId,
     clientId: quotation.clientId,
     invoiceNumber,
-    status: 'DRAFT',
+    status: 'PENDING',
     invoiceDate: now,
     dueDate,
     currency: quotation.currency,

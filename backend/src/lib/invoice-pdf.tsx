@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
   },
   statusPaid: { backgroundColor: '#dcfce7', color: '#166534' },
   statusOverdue: { backgroundColor: '#fee2e2', color: '#991b1b' },
+  statusPending: { backgroundColor: '#fef3c7', color: '#92400e' },
   statusSent: { backgroundColor: '#dbeafe', color: '#1e40af' },
   statusDraft: { backgroundColor: '#f1f5f9', color: '#475569' },
   grid: {
@@ -204,14 +205,27 @@ interface InvoicePdfProps {
 
 export function InvoiceDocument({ invoice, client, business }: InvoicePdfProps) {
   const items = invoice.items || [];
-  const status = (invoice.status || 'DRAFT').toUpperCase();
+  const rawStatus = (invoice.status || 'PENDING').toUpperCase();
+  const isPaid = rawStatus === 'PAID' && (invoice.amountDue <= 0);
+  const displayStatus = isPaid
+    ? 'PAID'
+    : rawStatus === 'OVERDUE'
+    ? 'OVERDUE'
+    : rawStatus === 'PARTIALLY_PAID'
+    ? 'PARTIALLY PAID'
+    : rawStatus === 'DRAFT'
+    ? 'DRAFT'
+    : 'UNPAID';
+
   const badgeStyle =
-    status === 'PAID'
+    displayStatus === 'PAID'
       ? styles.statusPaid
-      : status === 'OVERDUE'
+      : displayStatus === 'OVERDUE'
       ? styles.statusOverdue
-      : status === 'SENT'
-      ? styles.statusSent
+      : displayStatus === 'PARTIALLY PAID'
+      ? styles.statusPending
+      : displayStatus === 'UNPAID'
+      ? styles.statusPending
       : styles.statusDraft;
 
   return (
@@ -229,7 +243,7 @@ export function InvoiceDocument({ invoice, client, business }: InvoicePdfProps) 
             <Text style={styles.invoiceTitle}>TAX INVOICE</Text>
             <Text style={styles.invoiceNum}>#{invoice.invoiceNumber || 'INV-DRAFT'}</Text>
             <View style={[styles.statusBadge, badgeStyle]}>
-              <Text>{status}</Text>
+              <Text>{displayStatus}</Text>
             </View>
           </View>
         </View>

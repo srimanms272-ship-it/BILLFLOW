@@ -87,7 +87,14 @@ export async function GET(request: NextRequest, { params }: Params) {
       }
     };
 
-    const pdfBuffer = await generateInvoicePDFBuffer(invoice, resolvedClient, resolvedBusiness);
+    // Enforce that an invoice is ONLY 'PAID' if full amount is verified paid
+    const isPaid = (invoice.amountPaid >= invoice.total && invoice.total > 0) || (invoice.amountDue <= 0 && invoice.amountPaid > 0);
+    const normalizedInvoice = {
+      ...invoice,
+      status: isPaid ? 'PAID' : (invoice.status === 'PAID' ? 'PENDING' : (invoice.status || 'PENDING')),
+    };
+
+    const pdfBuffer = await generateInvoicePDFBuffer(normalizedInvoice, resolvedClient, resolvedBusiness);
 
     return new Response(pdfBuffer as any, {
       status: 200,

@@ -18,7 +18,7 @@ interface Invoice {
   client?: { name: string; email: string; company?: string };
 }
 
-const STATUS_OPTIONS = ['ALL', 'DRAFT', 'SENT', 'VIEWED', 'PENDING', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'];
+const STATUS_OPTIONS = ['ALL', 'UNPAID', 'PENDING', 'DRAFT', 'SENT', 'VIEWED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'];
 
 function formatAmount(paise: number): string {
   return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -29,9 +29,15 @@ function formatDate(dateStr: string): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  PAID: 'status-paid', SENT: 'status-sent', DRAFT: 'status-draft',
-  OVERDUE: 'status-overdue', PARTIALLY_PAID: 'status-partially_paid',
-  CANCELLED: 'status-cancelled', VIEWED: 'status-viewed', PENDING: 'status-pending',
+  PAID: 'status-paid',
+  PENDING: 'status-pending',
+  UNPAID: 'status-pending',
+  SENT: 'status-sent',
+  DRAFT: 'status-draft',
+  OVERDUE: 'status-overdue',
+  PARTIALLY_PAID: 'status-partially_paid',
+  CANCELLED: 'status-cancelled',
+  VIEWED: 'status-viewed',
 };
 
 export default function InvoicesPage() {
@@ -239,9 +245,19 @@ export default function InvoicesPage() {
                   <td className="text-sm font-bold text-white">{formatAmount(invoice.total)}</td>
                   <td className="text-sm text-green-400">{invoice.amountPaid > 0 ? formatAmount(invoice.amountPaid) : '—'}</td>
                   <td>
-                    <span className={`status-badge ${STATUS_STYLES[invoice.status] || 'status-draft'}`}>
-                      {invoice.status.replace('_', ' ')}
-                    </span>
+                    {(() => {
+                      const isPaid = (invoice.status === 'PAID') && (invoice.amountDue <= 0);
+                      const displayLabel = isPaid
+                        ? 'PAID'
+                        : invoice.status === 'PENDING' || invoice.status === 'UNPAID'
+                        ? 'UNPAID'
+                        : invoice.status.replace('_', ' ');
+                      return (
+                        <span className={`status-badge ${isPaid ? 'status-paid' : (STATUS_STYLES[invoice.status] || 'status-pending')}`}>
+                          {displayLabel}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td>
                     <div className="flex items-center gap-1">

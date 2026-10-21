@@ -90,19 +90,31 @@ export async function GET(request: NextRequest, { params }: Params) {
       db.collection('businesses').findOne(businessLookup as any).catch(() => null),
     ]);
 
-    // Mark as viewed if client is viewing
-    if ((session?.role === 'CLIENT' || !session) && invoice.status === 'SENT' && invoice._id) {
+    // Mark as viewed if client is viewing (preserve PENDING status, record viewedAt)
+    if ((session?.role === 'CLIENT' || !session) && invoice._id) {
       try {
         await db.collection('invoices').updateOne(
           { _id: ObjectId.isValid(invoice._id) ? new ObjectId(invoice._id) : invoice._id },
-          { $set: { status: 'VIEWED', viewedAt: new Date(), updatedAt: new Date() } }
+          { $set: { viewedAt: new Date(), updatedAt: new Date() } }
         );
-        invoice.status = 'VIEWED';
       } catch {}
     }
 
+    // An invoice is ONLY 'PAID' if full amount is verified paid and balance due is 0
+    const isPaid = (invoice.amountPaid >= invoice.total && invoice.total > 0) || (invoice.amountDue <= 0 && invoice.amountPaid > 0);
+    const normalizedStatus = isPaid
+      ? 'PAID'
+      : invoice.status === 'PAID'
+      ? (invoice.amountPaid > 0 ? 'PARTIALLY_PAID' : 'PENDING')
+      : invoice.status || 'PENDING';
+
+    const normalizedInvoice = {
+      ...invoice,
+      status: normalizedStatus,
+    };
+
     return createSuccessResponse({
-      invoice,
+      invoice: normalizedInvoice,
       client: client || invoice.client || null,
       payments: payments || [],
       business: business || null,

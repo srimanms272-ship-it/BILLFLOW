@@ -153,7 +153,7 @@ export interface Quotation {
 }
 
 // ==================== INVOICE ====================
-export type InvoiceStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'PENDING' | 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
 export interface Invoice {
   _id?: ObjectId;
