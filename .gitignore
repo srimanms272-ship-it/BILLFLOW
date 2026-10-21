@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Monorepo app dependencies and build output
+node_modules/
+.next/
+
+# Environment files: ignore secrets, allow safe examples
+.env*
+!.env.example
