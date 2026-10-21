@@ -55,14 +55,13 @@ export const BusinessSchema = z.object({
   }),
 });
 
-// ==================== CLIENT SCHEMAS ====================
 const AddressSchema = z.object({
-  line1: z.string().min(1, 'Address line 1 is required'),
-  line2: z.string().optional(),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().min(1, 'State is required'),
-  country: z.string().min(1, 'Country is required').default('India'),
-  pincode: z.string().min(1, 'Pincode is required'),
+  line1: z.string().optional().default(''),
+  line2: z.string().optional().default(''),
+  city: z.string().optional().default(''),
+  state: z.string().optional().default(''),
+  country: z.string().optional().default('India'),
+  pincode: z.string().optional().default(''),
 });
 
 export const ClientSchema = z.object({
@@ -71,8 +70,14 @@ export const ClientSchema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   gstin: z.string().optional(),
-  pan: z.string().optional(),
-  billingAddress: AddressSchema,
+  billingAddress: AddressSchema.optional().default({
+    line1: '',
+    line2: '',
+    city: '',
+    state: '',
+    country: 'India',
+    pincode: '',
+  }),
   shippingAddress: AddressSchema.optional(),
   notes: z.string().max(500).optional(),
 });

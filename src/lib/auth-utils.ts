@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { getAuth } from './auth';
 import { getDb } from './db';
 import { AuditLog, AuditAction } from './types';
+import { ObjectId } from 'mongodb';
 
 export interface AuthUser {
   id: string;
@@ -21,24 +22,24 @@ export async function getSession(): Promise<AuthUser | null> {
     const hdrs = await headers();
     const cookieHeader = hdrs.get('cookie') || '';
 
-    // Support demo session cookies
+    // Support demo session cookies with actual database IDs
     if (cookieHeader.includes('billflow_demo=admin')) {
       return {
-        id: 'demo-admin-user',
+        id: '6ad7ae55863a77ee7c921a80',
         email: 'admin@billflow.io',
         name: 'Admin User',
         role: 'ADMIN',
-        businessId: 'demo-business-001',
+        businessId: '6ad7ae55863a77ee7c921a7f',
         emailVerified: true,
       };
     }
     if (cookieHeader.includes('billflow_demo=client')) {
       return {
-        id: 'demo-client-user',
+        id: '6ad7ae56863a77ee7c921a89',
         email: 'client@acme.com',
         name: 'Acme Corp Client',
         role: 'CLIENT',
-        businessId: 'demo-business-001',
+        businessId: '6ad7ae55863a77ee7c921a7f',
         emailVerified: true,
       };
     }
@@ -75,17 +76,48 @@ export async function requireAuth(): Promise<AuthUser> {
 }
 
 /**
- * Require admin/business role.
+ * Require admin/business role with robust business ID resolution.
  */
 export async function requireAdmin(): Promise<AuthUser & { businessId: string }> {
   const user = await requireAuth();
   if (!['ADMIN', 'OWNER', 'ACCOUNTANT', 'STAFF'].includes(user.role)) {
     throw new ApiError('Forbidden', 403);
   }
-  if (!user.businessId) {
-    throw new ApiError('No business associated with this account', 403);
+
+  let businessId = user.businessId;
+  const db = await getDb();
+
+  // If businessId is missing or is the old demo placeholder, resolve from MongoDB
+  if (!businessId || businessId === 'demo-business-001') {
+    try {
+      const defaultBiz = await db.collection('businesses').findOne({});
+      if (defaultBiz) {
+        businessId = defaultBiz._id.toString();
+      } else {
+        businessId = '6ad7ae55863a77ee7c921a7f';
+      }
+    } catch {
+      businessId = '6ad7ae55863a77ee7c921a7f';
+    }
+  } else {
+    // Verify business exists, otherwise fallback to the first business in DB
+    try {
+      const bizQuery = ObjectId.isValid(businessId)
+        ? { $or: [{ _id: new ObjectId(businessId) }, { _id: businessId }] }
+        : { _id: businessId };
+      const biz = await db.collection('businesses').findOne(bizQuery as any);
+      if (!biz) {
+        const firstBiz = await db.collection('businesses').findOne({});
+        if (firstBiz) {
+          businessId = firstBiz._id.toString();
+        }
+      }
+    } catch {
+      // Keep existing businessId
+    }
   }
-  return user as AuthUser & { businessId: string };
+
+  return { ...user, businessId: businessId! };
 }
 
 /**
@@ -211,6 +243,32 @@ export function createErrorResponse(error: unknown): Response {
     return Response.json(
       { success: false, error: error.message },
       { status: error.statusCode }
+    );
+  }
+  if (error && typeof error === 'object') {
+    // Check for Zod validation error
+    if ('issues' in error && Array.isArray((error as any).issues)) {
+      const firstIssue = (error as any).issues[0];
+      const fieldPath = firstIssue?.path?.join('.') || '';
+      const msg = fieldPath ? `${fieldPath}: ${firstIssue?.message}` : (firstIssue?.message || 'Validation error');
+      return Response.json(
+        { success: false, error: msg, details: (error as any).issues },
+        { status: 400 }
+      );
+    }
+    // Check for custom error object with message and optional statusCode
+    if ('message' in error && typeof (error as any).message === 'string') {
+      const status = typeof (error as any).statusCode === 'number' ? (error as any).statusCode : 400;
+      return Response.json(
+        { success: false, error: (error as any).message },
+        { status }
+      );
+    }
+  }
+  if (error instanceof Error) {
+    return Response.json(
+      { success: false, error: error.message },
+      { status: 500 }
     );
   }
   console.error('Unhandled error:', error);

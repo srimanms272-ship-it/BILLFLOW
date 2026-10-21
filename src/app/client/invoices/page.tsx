@@ -136,7 +136,7 @@ export default function ClientInvoicesPage() {
                       <td className="pr-6 text-right space-x-2">
                         <a
                           href={`/api/invoices/${inv._id}/pdf`}
-                          target="_blank"
+                          download={`Invoice-${inv.invoiceNumber || inv._id}.pdf`}
                           className="btn btn-secondary text-xs py-1 px-2.5"
                           title="Download PDF"
                         >

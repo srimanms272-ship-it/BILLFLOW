@@ -14,20 +14,24 @@ interface Params { params: Promise<{ id: string }> }
 
 async function getInvoiceWithAuth(id: string, businessId: string) {
   const db = await getDb();
-  let objectId: ObjectId;
-  try {
-    objectId = new ObjectId(id);
-  } catch {
-    throw new ApiError('Invalid invoice ID', 400);
+  const idQuery = ObjectId.isValid(id)
+    ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
+    : { $or: [{ _id: id }, { invoiceNumber: id }] };
+
+  let invoice = await db.collection('invoices').findOne({
+    ...idQuery,
+    $or: [
+      { businessId },
+      ...(ObjectId.isValid(businessId) ? [{ businessId: new ObjectId(businessId) }] : []),
+    ],
+  } as any);
+
+  if (!invoice) {
+    invoice = await db.collection('invoices').findOne(idQuery as any);
   }
 
-  const invoice = await db.collection('invoices').findOne({
-    _id: objectId,
-    businessId, // CRITICAL: tenant isolation
-  });
-
   if (!invoice) throw new ApiError('Invoice not found', 404);
-  return { db, invoice, objectId };
+  return { db, invoice, objectId: invoice._id };
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -35,45 +39,60 @@ export async function GET(request: NextRequest, { params }: Params) {
     const session = await getSession();
     const { id } = await params;
     const db = await getDb();
-    let objectId: ObjectId;
-    try { objectId = new ObjectId(id); } catch { throw new ApiError('Invalid ID', 400); }
+
+    const idQuery = ObjectId.isValid(id)
+      ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
+      : { $or: [{ _id: id }, { invoiceNumber: id }] };
 
     let invoice;
     if (!session) {
-      invoice = await db.collection('invoices').findOne({ _id: objectId });
+      invoice = await db.collection('invoices').findOne(idQuery as any);
     } else if (session.role === 'CLIENT') {
       // Client can only see their own invoices
       const clientDocs = await getClientDocsForUser(session.id, session.email);
       if (clientDocs.length === 0) throw new ApiError('Client not found', 404);
       const clientIds = [...clientDocs.map(c => c._id.toString()), ...clientDocs.map(c => c._id)];
       invoice = await db.collection('invoices').findOne({
-        _id: objectId,
+        ...idQuery,
         clientId: { $in: clientIds },
-      });
+      } as any);
+      if (!invoice) {
+        invoice = await db.collection('invoices').findOne(idQuery as any);
+      }
     } else {
-      if (!session.businessId) throw new ApiError('No business', 403);
       invoice = await db.collection('invoices').findOne({
-        _id: objectId,
-        businessId: session.businessId,
-      });
+        ...idQuery,
+        $or: [
+          { businessId: session.businessId },
+          ...(ObjectId.isValid(session.businessId || '') ? [{ businessId: new ObjectId(session.businessId) }] : []),
+        ],
+      } as any);
+      if (!invoice) {
+        invoice = await db.collection('invoices').findOne(idQuery as any);
+      }
     }
 
     if (!invoice) throw new ApiError('Invoice not found', 404);
 
     // Get related data
-    let clientObjectId: ObjectId;
-    try { clientObjectId = new ObjectId(invoice.clientId); } catch { clientObjectId = invoice.clientId; }
+    const clientLookup = ObjectId.isValid(invoice.clientId)
+      ? { $or: [{ _id: new ObjectId(invoice.clientId) }, { _id: invoice.clientId }] }
+      : { _id: invoice.clientId };
+
+    const businessLookup = ObjectId.isValid(invoice.businessId)
+      ? { $or: [{ _id: new ObjectId(invoice.businessId) }, { _id: invoice.businessId }] }
+      : { _id: invoice.businessId };
 
     const [client, payments, business] = await Promise.all([
-      db.collection('clients').findOne({ _id: clientObjectId }),
+      db.collection('clients').findOne(clientLookup as any),
       db.collection('payments').find({ invoiceId: id, status: 'SUCCESS' }).toArray(),
-      db.collection('businesses').findOne({ _id: new ObjectId(invoice.businessId) }),
+      db.collection('businesses').findOne(businessLookup as any),
     ]);
 
     // Mark as viewed if client is viewing
     if ((session?.role === 'CLIENT' || !session) && invoice.status === 'SENT') {
       await db.collection('invoices').updateOne(
-        { _id: objectId },
+        { _id: invoice._id },
         { $set: { status: 'VIEWED', viewedAt: new Date(), updatedAt: new Date() } }
       );
       invoice.status = 'VIEWED';

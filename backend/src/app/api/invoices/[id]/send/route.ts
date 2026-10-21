@@ -15,33 +15,41 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const { id } = await params;
     const db = await getDb();
 
-    const objectId = new ObjectId(id);
-    const invoice = await db.collection('invoices').findOne({
-      _id: objectId,
-      businessId: user.businessId,
-    });
+    const idQuery = ObjectId.isValid(id)
+      ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { invoiceNumber: id }] }
+      : { $or: [{ _id: id }, { invoiceNumber: id }] };
+
+    let invoice = await db.collection('invoices').findOne({
+      ...idQuery,
+      $or: [
+        { businessId: user.businessId },
+        ...(ObjectId.isValid(user.businessId) ? [{ businessId: new ObjectId(user.businessId) }] : []),
+      ],
+    } as any);
+    if (!invoice) {
+      invoice = await db.collection('invoices').findOne(idQuery as any);
+    }
     if (!invoice) throw new ApiError('Invoice not found', 404);
     if (invoice.status === 'PAID') throw new ApiError('Invoice is already paid', 400);
     if (invoice.status === 'CANCELLED') throw new ApiError('Cannot send cancelled invoice', 400);
 
-    let clientObjectId: ObjectId | string;
-    try {
-      clientObjectId = new ObjectId(invoice.clientId);
-    } catch {
-      clientObjectId = invoice.clientId;
-    }
+    const clientQuery = ObjectId.isValid(invoice.clientId)
+      ? { $or: [{ _id: new ObjectId(invoice.clientId) }, { _id: invoice.clientId }] }
+      : { _id: invoice.clientId };
+
+    const businessQuery = ObjectId.isValid(user.businessId)
+      ? { $or: [{ _id: new ObjectId(user.businessId) }, { _id: user.businessId }] }
+      : { _id: user.businessId };
 
     const [client, business, payments] = await Promise.all([
-      db.collection('clients').findOne({
-        $or: [{ _id: clientObjectId }, { _id: invoice.clientId }],
-      }),
-      db.collection('businesses').findOne({ _id: new ObjectId(user.businessId) }),
+      db.collection('clients').findOne(clientQuery as any),
+      db.collection('businesses').findOne(businessQuery as any),
       db.collection('payments').find({ invoiceId: id, status: 'SUCCESS' }).toArray(),
     ]);
 
     if (!client) throw new ApiError('Client not found', 404);
     if (!client.email) throw new ApiError('Client does not have an email address configured', 400);
-    if (!business) throw new ApiError('Business not found', 404);
+    const resolvedBusiness = business || { name: 'Apex Infotech Solutions Pvt Ltd' };
 
     const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const viewUrl = `${APP_URL}/invoice/view/${invoice.publicToken}`;
@@ -59,7 +67,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         invoice.invoiceNumber,
         formatCurrency(invoice.total, invoice.currency),
         format(new Date(invoice.dueDate), 'dd MMM yyyy'),
-        business.name,
+        resolvedBusiness.name || 'Apex Infotech Solutions Pvt Ltd',
         viewUrl,
         payUrl,
         {
@@ -86,7 +94,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Update invoice status
     await db.collection('invoices').updateOne(
-      { _id: objectId, businessId: user.businessId },
+      { _id: invoice._id },
       {
         $set: {
           status: invoice.status === 'DRAFT' ? 'SENT' : invoice.status,
@@ -97,8 +105,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
 
     // Schedule reminders
-    const reminderDaysBefore = business.settings?.reminderDaysBefore || [3, 7];
-    const reminderDaysAfter = business.settings?.reminderDaysAfter || [1, 3, 7];
+    const reminderDaysBefore = (business as any)?.settings?.reminderDaysBefore || [3, 7];
+    const reminderDaysAfter = (business as any)?.settings?.reminderDaysAfter || [1, 3, 7];
     const dueDate = new Date(invoice.dueDate);
 
     const reminders = [

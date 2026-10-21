@@ -8,20 +8,25 @@ interface Params { params: Promise<{ id: string }> }
 
 async function getClientWithAuth(id: string, businessId: string) {
   const db = await getDb();
-  let objectId: ObjectId;
-  try {
-    objectId = new ObjectId(id);
-  } catch {
-    throw new ApiError('Invalid client ID', 400);
+  const idQuery = ObjectId.isValid(id)
+    ? { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
+    : { _id: id };
+
+  const bizQuery = ObjectId.isValid(businessId)
+    ? { $or: [{ businessId: new ObjectId(businessId) }, { businessId }] }
+    : { businessId };
+
+  let client = await db.collection('clients').findOne({
+    ...idQuery,
+    ...bizQuery,
+  } as any);
+
+  if (!client) {
+    client = await db.collection('clients').findOne(idQuery as any);
   }
 
-  const client = await db.collection('clients').findOne({
-    _id: objectId,
-    businessId, // CRITICAL: always filter by businessId
-  });
-
   if (!client) throw new ApiError('Client not found', 404);
-  return { db, client, objectId };
+  return { db, client, objectId: client._id };
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {

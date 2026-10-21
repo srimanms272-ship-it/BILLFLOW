@@ -266,8 +266,7 @@ export default function InvoicesPage() {
                       )}
                       <a
                         href={`/api/invoices/${invoice._id}/pdf`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        download={`Invoice-${invoice.invoiceNumber || invoice._id}.pdf`}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-700 transition-colors"
                         title="Download PDF"
                         id={`download-invoice-${invoice._id}`}

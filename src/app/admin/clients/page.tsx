@@ -58,12 +58,8 @@ export default function ClientsPage() {
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
-    if (!formData.name || formData.name.length < 2) errors.name = 'Name is required (min 2 chars)';
-    if (!formData.email || !/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Valid email is required';
-    if (!formData.billingAddress.line1) errors['billingAddress.line1'] = 'Address is required';
-    if (!formData.billingAddress.city) errors['billingAddress.city'] = 'City is required';
-    if (!formData.billingAddress.state) errors['billingAddress.state'] = 'State is required';
-    if (!formData.billingAddress.pincode) errors['billingAddress.pincode'] = 'Pincode is required';
+    if (!formData.name || formData.name.trim().length < 2) errors.name = 'Name is required (min 2 chars)';
+    if (!formData.email || !/\S+@\S+\.\S+/.test(formData.email.trim())) errors.email = 'Valid email is required';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -111,7 +107,23 @@ export default function ClientsPage() {
 
   const openEdit = (client: Client) => {
     setEditClient(client);
-    setFormData({ name: client.name, email: client.email, phone: client.phone || '', company: client.company || '', gstin: client.gstin || '', pan: '', notes: '', billingAddress: { line1: '', line2: '', city: '', state: '', country: 'India', pincode: '' } });
+    setFormData({
+      name: client.name || '',
+      email: client.email || '',
+      phone: client.phone || '',
+      company: client.company || '',
+      gstin: client.gstin || '',
+      pan: (client as any).pan || '',
+      notes: (client as any).notes || '',
+      billingAddress: {
+        line1: (client as any).billingAddress?.line1 || '',
+        line2: (client as any).billingAddress?.line2 || '',
+        city: (client as any).billingAddress?.city || '',
+        state: (client as any).billingAddress?.state || '',
+        country: (client as any).billingAddress?.country || 'India',
+        pincode: (client as any).billingAddress?.pincode || '',
+      },
+    });
     setShowForm(true);
     setMenuOpen(null);
   };
@@ -296,24 +308,24 @@ export default function ClientsPage() {
                 <h4 className="text-sm font-semibold text-white mb-3">Billing Address</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Address Line 1 *</label>
-                    <input type="text" value={formData.billingAddress.line1} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, line1: e.target.value } }))} className={`input text-sm ${formErrors['billingAddress.line1'] ? 'border-red-500/50' : ''}`} required id="billing-line1" />
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Address Line 1</label>
+                    <input type="text" value={formData.billingAddress.line1} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, line1: e.target.value } }))} className="input text-sm" id="billing-line1" />
                   </div>
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-400 mb-1">Address Line 2</label>
                     <input type="text" value={formData.billingAddress.line2} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, line2: e.target.value } }))} className="input text-sm" id="billing-line2" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">City *</label>
-                    <input type="text" value={formData.billingAddress.city} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, city: e.target.value } }))} className={`input text-sm ${formErrors['billingAddress.city'] ? 'border-red-500/50' : ''}`} required id="billing-city" />
+                    <label className="block text-xs font-medium text-slate-400 mb-1">City</label>
+                    <input type="text" value={formData.billingAddress.city} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, city: e.target.value } }))} className="input text-sm" id="billing-city" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">State *</label>
-                    <input type="text" value={formData.billingAddress.state} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, state: e.target.value } }))} className={`input text-sm ${formErrors['billingAddress.state'] ? 'border-red-500/50' : ''}`} required id="billing-state" />
+                    <label className="block text-xs font-medium text-slate-400 mb-1">State</label>
+                    <input type="text" value={formData.billingAddress.state} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, state: e.target.value } }))} className="input text-sm" id="billing-state" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Pincode *</label>
-                    <input type="text" value={formData.billingAddress.pincode} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, pincode: e.target.value } }))} className={`input text-sm ${formErrors['billingAddress.pincode'] ? 'border-red-500/50' : ''}`} required id="billing-pincode" />
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Pincode</label>
+                    <input type="text" value={formData.billingAddress.pincode} onChange={(e) => setFormData(p => ({ ...p, billingAddress: { ...p.billingAddress, pincode: e.target.value } }))} className="input text-sm" id="billing-pincode" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">Country</label>

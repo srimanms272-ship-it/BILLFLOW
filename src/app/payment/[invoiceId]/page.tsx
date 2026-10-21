@@ -239,10 +239,17 @@ export default function PaymentPage() {
           </div>
 
           <div className="space-y-2">
-            <Link href="/client/receipts" className="btn btn-primary w-full py-3 rounded-xl justify-center">
+            <a
+              href={`/api/invoices/${invoiceId}/pdf`}
+              download={`Invoice-${data?.invoice?.invoiceNumber || invoiceId}.pdf`}
+              className="btn btn-primary w-full py-3 rounded-xl justify-center"
+            >
+              Download Invoice PDF
+            </a>
+            <Link href="/client/receipts" className="btn btn-secondary w-full py-3 rounded-xl justify-center">
               View Receipts
             </Link>
-            <Link href="/client/invoices" className="btn btn-secondary w-full py-3 rounded-xl justify-center">
+            <Link href="/client/invoices" className="btn btn-ghost w-full py-2.5 rounded-xl justify-center text-slate-400 hover:text-white">
               Back to Invoices
             </Link>
           </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Receipt, CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
+import { Receipt, CheckCircle, ExternalLink, Loader2, Download } from 'lucide-react';
 
 interface Payment {
   _id: string;
@@ -93,10 +93,10 @@ export default function ClientReceiptsPage() {
                       {p.invoiceId && (
                         <a
                           href={`/api/invoices/${p.invoiceId}/pdf`}
-                          target="_blank"
+                          download={`Invoice-${p.invoiceId}.pdf`}
                           className="text-xs text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
                         >
-                          View Invoice <ExternalLink className="w-3 h-3" />
+                          Invoice PDF <Download className="w-3 h-3" />
                         </a>
                       )}
                     </td>

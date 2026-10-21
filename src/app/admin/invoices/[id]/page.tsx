@@ -193,11 +193,11 @@ export default function InvoiceDetailPage() {
           )}
           <a
             href={`/api/invoices/${id}/pdf`}
-            target="_blank"
+            download={`Invoice-${invoice.invoiceNumber || id}.pdf`}
             className="btn btn-secondary text-sm"
             id="download-pdf-btn"
           >
-            <Download className="w-4 h-4" /> PDF
+            <Download className="w-4 h-4" /> Download PDF
           </a>
           {['DRAFT', 'SENT'].includes(invoice.status as string) && (
             <button
@@ -418,7 +418,7 @@ export default function InvoiceDetailPage() {
           <div className="metric-card">
             <h3 className="text-sm font-semibold text-white mb-4">Quick Actions</h3>
             <div className="space-y-2">
-              <a href={`/api/invoices/${id}/pdf`} target="_blank" className="w-full btn btn-secondary text-sm justify-center">
+              <a href={`/api/invoices/${id}/pdf`} download={`Invoice-${invoice.invoiceNumber || id}.pdf`} className="w-full btn btn-secondary text-sm justify-center">
                 <Download className="w-4 h-4" /> Download PDF
               </a>
               {amountDue > 0 && (

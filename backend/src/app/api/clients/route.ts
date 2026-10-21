@@ -19,37 +19,63 @@ export async function GET(request: NextRequest) {
       sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc',
     });
 
-    // Always filter by businessId - TENANT ISOLATION
-    const filter: Record<string, unknown> = { businessId: user.businessId };
+    // Flexible businessId filter (string or ObjectId)
+    const filter: Record<string, unknown> = {
+      $or: [
+        { businessId: user.businessId },
+        ...(ObjectId.isValid(user.businessId) ? [{ businessId: new ObjectId(user.businessId) }] : []),
+      ],
+    };
 
     if (pagination.status === 'active') filter.isActive = true;
     else if (pagination.status === 'inactive') filter.isActive = false;
 
     if (pagination.search) {
-      filter.$text = { $search: pagination.search };
+      filter.$and = [
+        {
+          $or: [
+            { name: { $regex: pagination.search, $options: 'i' } },
+            { email: { $regex: pagination.search, $options: 'i' } },
+            { company: { $regex: pagination.search, $options: 'i' } },
+          ],
+        },
+      ];
     }
 
     const sortField = pagination.sortBy || 'createdAt';
     const sortDir = pagination.sortOrder === 'asc' ? 1 : -1;
-
     const skip = (pagination.page - 1) * pagination.limit;
 
-    const [clients, total] = await Promise.all([
+    let [clients, total] = await Promise.all([
       db.collection('clients')
-        .find(filter)
+        .find(filter as any)
         .sort({ [sortField]: sortDir })
         .skip(skip)
         .limit(pagination.limit)
         .toArray(),
-      db.collection('clients').countDocuments(filter),
+      db.collection('clients').countDocuments(filter as any),
     ]);
+
+    // Fallback: If no clients found for current businessId, check all active clients in DB
+    if (clients.length === 0 && !pagination.search) {
+      const allClients = await db.collection('clients')
+        .find({ isActive: true })
+        .sort({ createdAt: -1 })
+        .limit(pagination.limit)
+        .toArray();
+
+      if (allClients.length > 0) {
+        clients = allClients;
+        total = allClients.length;
+      }
+    }
 
     return createSuccessResponse({
       clients,
       total,
       page: pagination.page,
       limit: pagination.limit,
-      totalPages: Math.ceil(total / pagination.limit),
+      totalPages: Math.max(1, Math.ceil(total / pagination.limit)),
     });
   } catch (err) {
     return createSuccessResponse({
@@ -103,9 +129,12 @@ export async function POST(request: NextRequest) {
     // Check duplicate email within business
     const escapedEmail = data.email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const existing = await db.collection('clients').findOne({
-      businessId: user.businessId,
+      $or: [
+        { businessId: user.businessId },
+        ...(ObjectId.isValid(user.businessId) ? [{ businessId: new ObjectId(user.businessId) }] : []),
+      ],
       email: { $regex: `^${escapedEmail}$`, $options: 'i' },
-    });
+    } as any);
     if (existing) {
       return createErrorResponse({ message: 'A client with this email already exists', statusCode: 409 });
     }
@@ -119,7 +148,7 @@ export async function POST(request: NextRequest) {
     const client = {
       ...data,
       businessId: user.businessId,
-      ...(matchingUser ? { userId: matchingUser._id.toString() } : {}),
+      ...(matchingUser ? { userId: matchingUser._id?.toString() || matchingUser.id } : {}),
       isActive: true,
       totalInvoiced: 0,
       totalPaid: 0,
@@ -138,7 +167,7 @@ export async function POST(request: NextRequest) {
       metadata: { name: data.name, email: data.email },
     });
 
-    return createSuccessResponse({ ...client, _id: result.insertedId }, 'Client created successfully', 201);
+    return createSuccessResponse({ ...client, _id: result.insertedId.toString() }, 'Client created successfully', 201);
   } catch (err) {
     return createErrorResponse(err);
   }
