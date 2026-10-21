@@ -1,7 +1,10 @@
 import { createAuthClient } from 'better-auth/react';
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  baseURL:
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
 });
 
 export const {
@@ -13,7 +16,7 @@ export const {
 
 // Manual implementations for methods not on the react client
 export async function forgetPassword(opts: { email: string; redirectTo: string }) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/forget-password`, {
+  const res = await fetch('/api/auth/forget-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -22,7 +25,7 @@ export async function forgetPassword(opts: { email: string; redirectTo: string }
 }
 
 export async function resetPassword(opts: { token: string; newPassword: string }) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/reset-password`, {
+  const res = await fetch('/api/auth/reset-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -31,7 +34,7 @@ export async function resetPassword(opts: { token: string; newPassword: string }
 }
 
 export async function sendVerificationEmail(opts: { email: string }) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/send-verification-email`, {
+  const res = await fetch('/api/auth/send-verification-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -40,7 +43,7 @@ export async function sendVerificationEmail(opts: { email: string }) {
 }
 
 export async function verifyEmail(opts: { token: string }) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/auth/verify-email`, {
+  const res = await fetch('/api/auth/verify-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),

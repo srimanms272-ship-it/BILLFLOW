@@ -1,10 +1,6 @@
 import { MongoClient, Db } from 'mongodb';
 
-const MONGODB_URL = process.env.MONGODB_URL!;
-
-if (!MONGODB_URL) {
-  throw new Error('Please define the MONGODB_URL environment variable in .env.local');
-}
+const MONGODB_URL = process.env.MONGODB_URL || '';
 
 interface GlobalMongo {
   conn: { client: MongoClient; db: Db } | null;
@@ -22,6 +18,10 @@ if (!global._mongo) {
 }
 
 export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
+  if (!MONGODB_URL) {
+    throw new Error('Please define the MONGODB_URL environment variable');
+  }
+
   if (cached.conn) {
     return cached.conn;
   }
